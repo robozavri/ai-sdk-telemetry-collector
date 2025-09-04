@@ -1,0 +1,64 @@
+{
+  "name": "ai-sdk-telemetry-collector",
+  "version": "1.0.0",
+  "description": "Telemetry collector for Vercel AI SDK that forwards analytics data to remote servers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts"
+  },
+  "keywords": [
+    "ai-sdk",
+    "telemetry",
+    "opentelemetry",
+    "analytics",
+    "vercel",
+    "ai",
+    "monitoring"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/ai-sdk-telemetry-collector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/ai-sdk-telemetry-collector/issues"
+  },
+  "homepage": "https://github.com/your-org/ai-sdk-telemetry-collector#readme",
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.7.0"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/core": "^1.21.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/jest": "^29.5.0",
+    "@types/uuid": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.5.0",
+    "prettier": "^3.0.0",
+    "rimraf": "^5.0.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
