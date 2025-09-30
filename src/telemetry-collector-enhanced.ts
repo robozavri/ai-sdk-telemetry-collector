@@ -9,13 +9,13 @@ import {
 } from './types';
 import { TelemetrySender } from './telemetry-sender';
 import { SpanProcessor } from './span-processor';
-import { AISDKIntegration } from './ai-sdk-integration';
+import { AISDKIntegrationEnhanced } from './ai-sdk-integration-enhanced';
 
-export class AITelemetryCollector {
+export class AITelemetryCollectorEnhanced {
   private config: TelemetryConfig;
   private sender: TelemetrySender;
   private processor: SpanProcessor;
-  private aiSdkIntegration: AISDKIntegration;
+  private aiSdkIntegration: AISDKIntegrationEnhanced;
   private isEnabled: boolean = false;
   private spanProcessor: any;
 
@@ -30,17 +30,12 @@ export class AITelemetryCollector {
       },
       enableAISDKIntegration: true,
       autoDetectAI: true,
-      capturePrompts: true,
-      captureResponses: true,
-      captureSystemPrompt: true,
-      maxContentLength: 10000,
-      redactSensitiveData: false,
       ...config,
     };
 
     this.sender = new TelemetrySender(this.config);
     this.processor = new SpanProcessor();
-    this.aiSdkIntegration = new AISDKIntegration(this);
+    this.aiSdkIntegration = new AISDKIntegrationEnhanced(this);
   }
 
   /**
@@ -180,7 +175,7 @@ export class AITelemetryCollector {
   }
 
   /**
-   * Enable automatic AI SDK integration
+   * Enable automatic AI SDK integration with content capture
    */
   enableAISDKIntegration(): void {
     this.aiSdkIntegration.enable();
@@ -225,7 +220,7 @@ export class AITelemetryCollector {
 
   private log(message: string): void {
     if (this.config.debug) {
-      console.log(`[AITelemetryCollector] ${message}`);
+      console.log(`[AITelemetryCollectorEnhanced] ${message}`);
     }
   }
 }
@@ -234,9 +229,9 @@ export class AITelemetryCollector {
  * Custom span processor that intercepts spans and forwards them to our collector
  */
 class CustomSpanProcessor {
-  private collector: AITelemetryCollector;
+  private collector: AITelemetryCollectorEnhanced;
 
-  constructor(collector: AITelemetryCollector) {
+  constructor(collector: AITelemetryCollectorEnhanced) {
     this.collector = collector;
   }
 

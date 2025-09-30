@@ -16,6 +16,24 @@ export interface TelemetryConfig {
     maxAttempts: number;
     delayMs: number;
   };
+  /** Enable automatic AI SDK integration (default: true) */
+  enableAISDKIntegration?: boolean;
+  /** Auto-detect AI SDK functions (default: true) */
+  autoDetectAI?: boolean;
+  /** Default function ID for AI operations */
+  aiFunctionId?: string;
+  /** Default metadata for AI operations */
+  aiMetadata?: Record<string, any>;
+  /** Capture user prompts content (default: true) */
+  capturePrompts?: boolean;
+  /** Capture AI responses content (default: true) */
+  captureResponses?: boolean;
+  /** Capture system prompt content (default: true) */
+  captureSystemPrompt?: boolean;
+  /** Max content length to capture (default: 10000) */
+  maxContentLength?: number;
+  /** Redact sensitive patterns from captured content (default: false) */
+  redactSensitiveData?: boolean;
 }
 
 export interface AITelemetryData {
@@ -40,6 +58,7 @@ export interface AITelemetryData {
     msToFirstChunk?: number;
     msToFinish?: number;
     avgCompletionTokensPerSecond?: number;
+    chunkCount?: number;
   };
   /** Tool usage information */
   tools: Array<{

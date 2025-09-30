@@ -2,6 +2,7 @@
 export { AITelemetryCollector } from './telemetry-collector';
 export { TelemetrySender } from './telemetry-sender';
 export { SpanProcessor } from './span-processor';
+export { AISDKIntegration } from './ai-sdk-integration';
 
 // Types
 export type {
