@@ -35,6 +35,13 @@ export class AITelemetryCollector {
       captureSystemPrompt: true,
       maxContentLength: 10000,
       redactSensitiveData: false,
+      edgeRuntimeStrategy: 'auto',
+      enableEdgeRuntimeFallback: true,
+      edgeRuntimeInstrumentation: {
+        useGlobalPatching: true,
+        useProxyWrapping: true,
+        useCallSiteInstrumentation: true,
+      },
       ...config,
     };
 

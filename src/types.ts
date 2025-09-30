@@ -34,6 +34,16 @@ export interface TelemetryConfig {
   maxContentLength?: number;
   /** Redact sensitive patterns from captured content (default: false) */
   redactSensitiveData?: boolean;
+  /** Edge runtime strategy (default: 'auto') */
+  edgeRuntimeStrategy?: 'global' | 'proxy' | 'callsite' | 'auto';
+  /** Enable Edge runtime fallback (default: true) */
+  enableEdgeRuntimeFallback?: boolean;
+  /** Edge runtime instrumentation options */
+  edgeRuntimeInstrumentation?: {
+    useGlobalPatching?: boolean;
+    useProxyWrapping?: boolean;
+    useCallSiteInstrumentation?: boolean;
+  };
 }
 
 export interface AITelemetryData {

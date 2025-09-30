@@ -1,0 +1,237 @@
+Prompt: Fix AISDKIntegration Dynamic Import Issues in Edge Runtime
+Problem Description
+The @robozavri/ai-sdk-telemetry-collector package v1.0.1 has a critical issue with the AISDKIntegration class that prevents automatic telemetry collection in Next.js Edge runtime environments. The integration fails to properly instrument AI SDK functions (streamText, generateText, streamObject) due to dynamic import limitations in Edge runtime.
+Current Error
+The integration reports as "enabled" but doesn't actually instrument the AI SDK functions, resulting in no automatic telemetry collection.
+Root Cause Analysis
+Dynamic Import Failure: The AISDKIntegration.instrumentAI() method attempts to use require('ai') and dynamic import('ai') statements, which fail in Edge runtime environments.
+Edge Runtime Limitations: Next.js Edge runtime has restrictions on dynamic imports and module resolution that prevent the current implementation from working.
+Fallback Mechanism Issues: The current fallback to ESM dynamic import using eval('import') also fails in Edge runtime.
+Files to Fix
+Primary file: src/ai-sdk-integration.ts (or dist/ai-sdk-integration.js)
+Key method: instrumentAI() around lines 46-80
+Current Problematic Code Pattern
+
+instrumentAI() {
+  try {
+    // This fails in Edge runtime
+    this.aiModule = require('ai');
+    if (this.aiModule?.streamText) {
+      this.originalStreamText = this.aiModule.streamText;
+      this.aiModule.streamText = this.wrapStreamText(this.aiModule.streamText);
+    }
+    // ... similar for generateText and streamObject
+  } catch (error) {
+    // Fallback also fails in Edge runtime
+    try {
+      const dynamicImport = eval('import');
+      dynamicImport('ai').then((mod) => {
+        // This never executes in Edge runtime
+      });
+    } catch (fallbackError) {
+      // Silent failure
+    }
+  }
+}
+
+Required Fixes
+1. Edge Runtime Detection and Handling
+Add runtime environment detection to handle Edge runtime differently:
+
+private isEdgeRuntime(): boolean {
+  return typeof EdgeRuntime !== 'undefined' || 
+         typeof process !== 'undefined' && 
+         process.env.NEXT_RUNTIME === 'edge';
+}
+
+2. Alternative Instrumentation Strategy for Edge Runtime
+For Edge runtime, use a different approach that doesn't rely on dynamic imports:
+
+private instrumentAIForEdgeRuntime() {
+  // Strategy 1: Use global function patching
+  if (typeof globalThis !== 'undefined') {
+    const originalStreamText = globalThis.streamText;
+    if (originalStreamText) {
+      globalThis.streamText = this.wrapStreamText(originalStreamText);
+    }
+  }
+  
+  // Strategy 2: Use module-level instrumentation
+  this.instrumentGlobalAIFunctions();
+}
+
+3. Module-Level Instrumentation
+Create a method that instruments AI SDK functions at the module level:
+
+private instrumentGlobalAIFunctions() {
+  // Check if AI SDK is available in global scope
+  const aiModule = this.getAIModuleFromGlobal();
+  if (aiModule) {
+    this.instrumentModule(aiModule);
+  }
+}
+
+private getAIModuleFromGlobal(): any {
+  // Try multiple ways to access AI SDK in Edge runtime
+  if (typeof globalThis !== 'undefined' && globalThis.ai) {
+    return globalThis.ai;
+  }
+  if (typeof global !== 'undefined' && global.ai) {
+    return global.ai;
+  }
+  // Add more fallback strategies
+  return null;
+}
+
+
+4. Enhanced Error Handling and Logging
+Improve error handling to provide better debugging information:
+
+instrumentAI() {
+  this.log('Starting AI SDK instrumentation...');
+  
+  if (this.isEdgeRuntime()) {
+    this.log('Detected Edge runtime, using alternative instrumentation');
+    return this.instrumentAIForEdgeRuntime();
+  }
+  
+  try {
+    this.aiModule = require('ai');
+    this.log('Successfully loaded AI module via require()');
+    this.instrumentModule(this.aiModule);
+  } catch (error) {
+    this.log('require() failed, trying dynamic import:', error.message);
+    this.tryDynamicImport();
+  }
+}
+
+private tryDynamicImport() {
+  // Enhanced dynamic import with better error handling
+  try {
+    const dynamicImport = eval('import');
+    dynamicImport('ai')
+      .then((mod) => {
+        this.log('Dynamic import successful');
+        this.aiModule = mod;
+        this.instrumentModule(mod);
+      })
+      .catch((error) => {
+        this.log('Dynamic import failed:', error.message);
+        this.tryAlternativeStrategies();
+      });
+  } catch (error) {
+    this.log('Dynamic import setup failed:', error.message);
+    this.tryAlternativeStrategies();
+  }
+}
+
+5. Alternative Strategies for Edge Runtime
+Implement multiple fallback strategies:
+
+private tryAlternativeStrategies() {
+  this.log('Trying alternative instrumentation strategies...');
+  
+  // Strategy 1: Check if AI SDK is already loaded
+  if (this.checkForPreloadedAI()) {
+    return;
+  }
+  
+  // Strategy 2: Use function wrapping at call site
+  this.setupCallSiteInstrumentation();
+  
+  // Strategy 3: Use proxy-based instrumentation
+  this.setupProxyInstrumentation();
+}
+
+private checkForPreloadedAI(): boolean {
+  // Check various global scopes for AI SDK
+  const possibleLocations = [
+    globalThis.ai,
+    globalThis.streamText,
+    globalThis.generateText,
+    // Add more locations
+  ];
+  
+  for (const location of possibleLocations) {
+    if (location && typeof location === 'function') {
+      this.log('Found preloaded AI function, instrumenting...');
+      this.instrumentPreloadedFunction(location);
+      return true;
+    }
+  }
+  return false;
+}
+
+6. Edge Runtime Specific Configuration
+Add Edge runtime specific configuration options:
+interface TelemetryConfig {
+  // ... existing config
+  edgeRuntimeStrategy?: 'global' | 'proxy' | 'callsite' | 'auto';
+  enableEdgeRuntimeFallback?: boolean;
+  edgeRuntimeInstrumentation?: {
+    useGlobalPatching?: boolean;
+    useProxyWrapping?: boolean;
+    useCallSiteInstrumentation?: boolean;
+  };
+}
+
+7. Testing and Validation
+Add comprehensive testing for Edge runtime:
+private validateInstrumentation(): boolean {
+  if (this.isEdgeRuntime()) {
+    // Edge runtime specific validation
+    return this.validateEdgeRuntimeInstrumentation();
+  }
+  return this.validateStandardInstrumentation();
+}
+
+private validateEdgeRuntimeInstrumentation(): boolean {
+  // Check if instrumentation worked in Edge runtime
+  const hasStreamText = typeof globalThis.streamText === 'function';
+  const hasGenerateText = typeof globalThis.generateText === 'function';
+  
+  this.log(`Edge runtime validation: streamText=${hasStreamText}, generateText=${hasGenerateText}`);
+  return hasStreamText || hasGenerateText;
+}
+Expected Outcome
+After implementing these fixes:
+AISDKIntegration should work in Edge runtime without dynamic import errors
+Automatic telemetry collection should work without manual sendCustomTelemetry calls
+All AI SDK functions (streamText, generateText, streamObject) should be properly instrumented
+Enhanced error logging should provide clear debugging information
+Fallback strategies should ensure telemetry collection works in various environments
+Testing Requirements
+Test in Next.js Edge runtime environment
+Test in Node.js runtime environment
+Test with different AI SDK versions
+Test with various Next.js configurations
+Verify telemetry data is automatically collected
+Verify no manual sendCustomTelemetry calls are needed
+Backward Compatibility
+Ensure all changes maintain backward compatibility with:
+Existing v1.0.1 API
+Node.js runtime environments
+Standard Next.js configurations
+Manual telemetry collection methods
+This fix will enable true automatic telemetry collection in Edge runtime environments, eliminating the need for manual sendCustomTelemetry calls while maintaining all the enhanced v1.0.1 features.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
