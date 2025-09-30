@@ -124,7 +124,7 @@ export class SpanProcessor {
       if (span.name.includes('tool') || span.name.includes('function')) {
         const toolName = span.name;
         const duration = this.calculateSpanDuration(span);
-        const success = span.status.code === SpanStatusCode.OK;
+        const success = span.status.code === 1;
 
         tools.push({
           name: toolName,

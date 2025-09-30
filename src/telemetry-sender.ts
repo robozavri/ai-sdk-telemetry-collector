@@ -109,7 +109,7 @@ export class TelemetrySender {
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
 
-    const response = await fetch(`${this.config.serverUrl}/api/telemetry`, {
+    const response = await fetch(`${this.config.serverUrl}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(batch),

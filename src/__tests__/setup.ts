@@ -1,5 +1,28 @@
 // Test setup file for Jest
 
+export {};
+
+declare global {
+  // eslint-disable-next-line no-var
+  var testUtils: {
+    waitFor: (ms: number) => Promise<void>;
+    createMockSpan: (attributes?: any) => {
+      attributes: any;
+      spanContext: () => {
+        traceId: string;
+        spanId: string;
+        parentSpanId: string;
+      };
+      name: string;
+      kind: number;
+      status: { code: number; message: string };
+      startTime: [number, number];
+      endTime: [number, number];
+      events: any[];
+    };
+  };
+}
+
 // Mock console methods to reduce noise in tests
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
@@ -22,7 +45,7 @@ afterAll(() => {
 });
 
 // Global test utilities
-global.testUtils = {
+globalThis.testUtils = {
   waitFor: (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
   createMockSpan: (attributes: any = {}) => ({
     attributes,

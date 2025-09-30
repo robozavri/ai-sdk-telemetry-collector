@@ -14,4 +14,4 @@ export type {
 } from './types';
 
 // Default export for convenience
-export default AITelemetryCollector;
+export { AITelemetryCollector as default } from './telemetry-collector';

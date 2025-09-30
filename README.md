@@ -15,7 +15,7 @@ A Node.js package for collecting and forwarding telemetry data from Vercel AI SD
 ## Installation
 
 ```bash
-npm install @your-org/ai-sdk-telemetry-collector
+npm install @robozavri/ai-sdk-telemetry-collector
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ npm install @your-org/ai-sdk-telemetry-collector
 ### Basic Usage
 
 ```typescript
-import { AITelemetryCollector } from '@your-org/ai-sdk-telemetry-collector';
+import { AITelemetryCollector } from '@robozavri/ai-sdk-telemetry-collector';
 
 // Initialize the collector
 const collector = new AITelemetryCollector({

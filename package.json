@@ -1,5 +1,5 @@
 {
-  "name": "ai-sdk-telemetry-collector",
+  "name": "@robozavri/ai-sdk-telemetry-collector",
   "version": "1.0.0",
   "description": "Telemetry collector for Vercel AI SDK that forwards analytics data to remote servers",
   "main": "dist/index.js",
@@ -31,12 +31,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/ai-sdk-telemetry-collector.git"
+    "url": "git+https://github.com/robozavri/ai-sdk-telemetry-collector.git"
   },
   "bugs": {
-    "url": "https://github.com/your-org/ai-sdk-telemetry-collector/issues"
+    "url": "https://github.com/robozavri/ai-sdk-telemetry-collector/issues"
   },
-  "homepage": "https://github.com/your-org/ai-sdk-telemetry-collector#readme",
+  "homepage": "https://github.com/robozavri/ai-sdk-telemetry-collector#readme",
   "peerDependencies": {
     "@opentelemetry/api": "^1.7.0"
   },

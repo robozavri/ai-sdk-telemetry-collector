@@ -183,8 +183,8 @@ export function createTelemetrySummary(events: AITelemetryData[]): {
     };
   }
 
-  const totalTokens = calculateTotalTokens(events);
-  const averagePerformance = calculateAverageResponseTime(events);
+  const totalTokensAgg = calculateTotalTokens(events);
+  const averagePerformanceAgg = calculateAverageResponseTime(events);
   const functionBreakdown = groupEventsByFunction(events);
   const modelBreakdown = groupEventsByModel(events);
   const toolSuccessRates = calculateToolSuccessRate(events);
@@ -197,8 +197,16 @@ export function createTelemetrySummary(events: AITelemetryData[]): {
 
   return {
     totalEvents: events.length,
-    totalTokens,
-    averagePerformance,
+    totalTokens: {
+      prompt: totalTokensAgg.promptTokens,
+      completion: totalTokensAgg.completionTokens,
+      total: totalTokensAgg.totalTokens,
+    },
+    averagePerformance: {
+      firstChunk: averagePerformanceAgg.avgMsToFirstChunk,
+      finish: averagePerformanceAgg.avgMsToFinish,
+      tokensPerSecond: averagePerformanceAgg.avgTokensPerSecond,
+    },
     functionBreakdown: Object.fromEntries(
       Object.entries(functionBreakdown).map(([key, value]) => [key, value.length])
     ),

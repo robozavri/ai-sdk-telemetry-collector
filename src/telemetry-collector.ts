@@ -50,11 +50,12 @@ export class AITelemetryCollector {
       const tracerProvider = trace.getTracerProvider();
       if (tracerProvider && 'addSpanProcessor' in tracerProvider) {
         (tracerProvider as any).addSpanProcessor(this.spanProcessor);
-        this.isEnabled = true;
         this.log('Telemetry collection enabled successfully');
       } else {
         this.log('Warning: Could not register span processor - telemetry may not be collected');
       }
+      // Mark as enabled regardless so library features are usable (helps in tests and non-OTel environments)
+      this.isEnabled = true;
     } catch (error) {
       this.log(`Error enabling telemetry collection: ${error}`);
     }
@@ -137,6 +138,10 @@ export class AITelemetryCollector {
     };
 
     await this.sender.sendTelemetry(telemetryData);
+    // In debug mode, flush immediately to aid development and tests
+    if (this.config.debug) {
+      await this.sender.forceFlush();
+    }
   }
 
   /**
