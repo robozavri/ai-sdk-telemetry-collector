@@ -90,7 +90,6 @@ export class AISDKIntegration {
     if (!this.isEnabled) {
       return;
     }
-    
     this.isEnabled = false;
     this.restoreAI();
     this.log('AI SDK integration disabled');
@@ -101,6 +100,100 @@ export class AISDKIntegration {
    */
   isIntegrationEnabled(): boolean {
     return this.isEnabled;
+  }
+
+  /**
+   * Wrap an AI SDK function to automatically capture telemetry.
+   * This is the core wrapper method that makes automatic instrumentation work.
+   * It detects the function type and applies the appropriate wrapper.
+   * 
+   * @param aiFunction - The AI SDK function to wrap
+   * @returns Wrapped function that captures telemetry automatically
+   */
+  wrapAIFunction<T extends Function>(aiFunction: T): T {
+    // Try to detect the function type by its name or characteristics
+    const funcName = aiFunction.name || '';
+    
+    // Detect function type and apply appropriate wrapper
+    if (funcName.includes('streamText') || this.isStreamTextFunction(aiFunction)) {
+      return this.wrapStreamText(aiFunction as any) as unknown as T;
+    } else if (funcName.includes('generateText') || this.isGenerateTextFunction(aiFunction)) {
+      return this.wrapGenerateText(aiFunction as any) as unknown as T;
+    } else if (funcName.includes('streamObject') || this.isStreamObjectFunction(aiFunction)) {
+      return this.wrapStreamObject(aiFunction as any) as unknown as T;
+    } else {
+      // Generic wrapper - try to handle it as streamText by default
+      this.log(`Wrapping unknown AI function: ${funcName}, using generic wrapper`);
+      return this.wrapGenericAIFunction(aiFunction as any) as unknown as T;
+    }
+  }
+
+  /**
+   * Check if function is streamText-like
+   */
+  private isStreamTextFunction(func: any): boolean {
+    // This is a heuristic - in practice, we rely on the user passing the right function
+    return typeof func === 'function';
+  }
+
+  /**
+   * Check if function is generateText-like
+   */
+  private isGenerateTextFunction(func: any): boolean {
+    return typeof func === 'function';
+  }
+
+  /**
+   * Check if function is streamObject-like
+   */
+  private isStreamObjectFunction(func: any): boolean {
+    return typeof func === 'function';
+  }
+
+  /**
+   * Generic wrapper for AI functions when type cannot be determined
+   */
+  private wrapGenericAIFunction(originalFunc: any) {
+    return async (options: AISDKOptions) => {
+      const startTime = Date.now();
+      const requestId = this.generateRequestId();
+      const sessionId = this.generateSessionId();
+      
+      const { userPrompt, systemPrompt } = this.extractPrompts(options.messages || []);
+
+      const telemetryContext: TelemetryContext = {
+        requestId,
+        sessionId,
+        functionId: options.experimental_telemetry?.functionId || 'ai-function',
+        startTime,
+        model: this.extractModelInfo(options.model),
+        settings: this.extractSettings(options),
+        metadata: options.experimental_telemetry?.metadata || {},
+        messages: options.messages,
+        userPrompt,
+        systemPrompt
+      };
+
+      try {
+        const result = await originalFunc(options);
+        
+        // Try to wrap the result if it looks like a stream result
+        if (result && typeof result === 'object' && (result.toDataStreamResponse || result.toTextStreamResponse)) {
+          return this.wrapStreamResult(result, telemetryContext);
+        }
+        
+        // Otherwise treat it as non-streaming
+        if (this.collector.getConfig().captureResponses !== false) {
+          telemetryContext.responseContent = this.truncateAndMaybeRedact(String(result?.text ?? ''));
+        }
+        this.recordCompletion(telemetryContext, result, Date.now() - startTime);
+        
+        return result;
+      } catch (error) {
+        this.recordError(telemetryContext, error as Error);
+        throw error;
+      }
+    };
   }
 
   /**
@@ -123,6 +216,12 @@ export class AISDKIntegration {
       return this.instrumentAIForEdgeRuntime();
     }
     
+    // Try to intercept the 'ai' module from Node's cache
+    if (this.instrumentFromCache()) {
+      return;
+    }
+    
+    // If not in cache, try to load it
     try {
       this.aiModule = require('ai');
       this.log('Successfully loaded AI module via require()');
@@ -131,6 +230,28 @@ export class AISDKIntegration {
       this.log(`require() failed, trying dynamic import: ${(error as Error).message}`);
       this.tryDynamicImport();
     }
+  }
+
+  /**
+   * Attempt to instrument AI SDK from Node's module cache
+   * This works if the user has already imported the AI SDK
+   */
+  private instrumentFromCache(): boolean {
+    try {
+      // Check if 'ai' module is already in Node's require cache
+      const aiModulePath = require.resolve('ai');
+      const cachedModule = require.cache[aiModulePath];
+      
+      if (cachedModule && cachedModule.exports) {
+        this.log('Found AI module in require cache, instrumenting...');
+        this.aiModule = cachedModule.exports;
+        this.instrumentModule(this.aiModule);
+        return true;
+      }
+    } catch (error) {
+      this.log(`Could not access require cache: ${(error as Error).message}`);
+    }
+    return false;
   }
 
   /**
@@ -339,28 +460,79 @@ export class AISDKIntegration {
   private instrumentPreloadedFunction(func: any): void {
     // This would instrument the preloaded function
     this.log('Instrumenting preloaded function...');
+    
+    // Replace the function in place
+    const wrapped = this.wrapGenerateText(func);
+    func = wrapped;
+    
+    // If there's a require cache, update it there too
+    this.updateRequireCache('generateText', wrapped);
   }
 
   /**
-   * Instrument AI module functions
+   * Instrument AI module functions by replacing them with wrapped versions
    */
   private instrumentModule(module: any): void {
-    if (module?.streamText) {
+    let instrumentedCount = 0;
+    
+    if (module?.streamText && typeof module.streamText === 'function') {
       this.originalStreamText = module.streamText;
-      module.streamText = this.wrapStreamText(module.streamText);
+      const wrapped = this.wrapStreamText(module.streamText);
+      
+      // Replace the function in place
+      module.streamText = wrapped;
+      
+      // If there's a require cache, update it there too
+      this.updateRequireCache('streamText', wrapped);
+      
       this.log('Instrumented streamText');
+      instrumentedCount++;
     }
     
-    if (module?.generateText) {
+    if (module?.generateText && typeof module.generateText === 'function') {
       this.originalGenerateText = module.generateText;
-      module.generateText = this.wrapGenerateText(module.generateText);
+      const wrapped = this.wrapGenerateText(module.generateText);
+      
+      module.generateText = wrapped;
+      this.updateRequireCache('generateText', wrapped);
+      
       this.log('Instrumented generateText');
+      instrumentedCount++;
     }
     
-    if (module?.streamObject) {
+    if (module?.streamObject && typeof module.streamObject === 'function') {
       this.originalStreamObject = module.streamObject;
-      module.streamObject = this.wrapStreamObject(module.streamObject);
-      this.log('Instrumented streamObject');
+      const wrapped = this.wrapStreamObject(module.streamObject);
+      
+      module.streamObject = wrapped;
+      this.updateRequireCache('streamObject', wrapped);
+      
+      this.log('✅ Instrumented streamObject');
+      instrumentedCount++;
+    }
+    
+    if (instrumentedCount > 0) {
+      this.log(`🎉 Successfully instrumented ${instrumentedCount} AI SDK function(s)`);
+      this.instrumentationValidated = true;
+    } else {
+      this.log('⚠️  No AI SDK functions found to instrument');
+    }
+  }
+
+  /**
+   * Update the require cache with wrapped functions
+   */
+  private updateRequireCache(functionName: string, wrappedFunction: any): void {
+    try {
+      const aiModulePath = require.resolve('ai');
+      const cachedModule = require.cache[aiModulePath];
+      
+      if (cachedModule && cachedModule.exports && cachedModule.exports[functionName]) {
+        cachedModule.exports[functionName] = wrappedFunction;
+        this.log(`Updated ${functionName} in require cache`);
+      }
+    } catch (error) {
+      // Silently fail - not critical
     }
   }
 

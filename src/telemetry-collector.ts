@@ -208,6 +208,31 @@ export class AITelemetryCollector {
   }
 
   /**
+   * Wrap an AI SDK function to automatically capture telemetry.
+   * This is the primary method for automatic instrumentation.
+   * 
+   * @example
+   * ```typescript
+   * import { streamText } from 'ai';
+   * import { telemetry } from './telemetry-collector';
+   * 
+   * const instrumentedStreamText = telemetry.wrap(streamText);
+   * 
+   * // Use the instrumented version everywhere
+   * const result = await instrumentedStreamText({
+   *   model: openai('gpt-4o'),
+   *   messages: [{ role: 'user', content: 'Hello!' }]
+   * });
+   * ```
+   * 
+   * @param aiFunction - The AI SDK function to wrap (streamText, generateText, streamObject)
+   * @returns Wrapped function that automatically captures telemetry
+   */
+  wrap<T extends Function>(aiFunction: T): T {
+    return this.aiSdkIntegration.wrapAIFunction(aiFunction) as T;
+  }
+
+  /**
    * Get current status
    */
   getStatus(): { 

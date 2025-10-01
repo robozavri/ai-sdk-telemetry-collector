@@ -1,237 +1,112 @@
-Prompt: Fix AISDKIntegration Dynamic Import Issues in Edge Runtime
-Problem Description
-The @robozavri/ai-sdk-telemetry-collector package v1.0.1 has a critical issue with the AISDKIntegration class that prevents automatic telemetry collection in Next.js Edge runtime environments. The integration fails to properly instrument AI SDK functions (streamText, generateText, streamObject) due to dynamic import limitations in Edge runtime.
-Current Error
-The integration reports as "enabled" but doesn't actually instrument the AI SDK functions, resulting in no automatic telemetry collection.
-Root Cause Analysis
-Dynamic Import Failure: The AISDKIntegration.instrumentAI() method attempts to use require('ai') and dynamic import('ai') statements, which fail in Edge runtime environments.
-Edge Runtime Limitations: Next.js Edge runtime has restrictions on dynamic imports and module resolution that prevent the current implementation from working.
-Fallback Mechanism Issues: The current fallback to ESM dynamic import using eval('import') also fails in Edge runtime.
-Files to Fix
-Primary file: src/ai-sdk-integration.ts (or dist/ai-sdk-integration.js)
-Key method: instrumentAI() around lines 46-80
-Current Problematic Code Pattern
+Current State: The package v1.0.2 works, but it relies on manual instrumentation. You have to explicitly call a function (like sendCustomTelemetry or a direct fetch) inside the 
+onFinish
+ callback of the Vercel AI SDK functions to send telemetry data.
+The Goal: You want the package to perform automatic instrumentation. It should automatically capture all relevant data from the Vercel AI SDK (prompts, responses, token usage, performance, etc.) without requiring manual calls in your application code.
+Technical Gap: The package currently doesn't correctly or fully hook into the Vercel AI SDK's experimental_telemetry system or use other mechanisms to automatically intercept the data. The enableAISDKIntegration: true flag in your code seems to be a feature you want rather than one that is fully implemented and working.
+Prompt for AI Assistant
+Here is a detailed prompt you can provide to another AI assistant to guide it in updating the @robozavri/ai-sdk-telemetry-collector package.
 
-instrumentAI() {
-  try {
-    // This fails in Edge runtime
-    this.aiModule = require('ai');
-    if (this.aiModule?.streamText) {
-      this.originalStreamText = this.aiModule.streamText;
-      this.aiModule.streamText = this.wrapStreamText(this.aiModule.streamText);
-    }
-    // ... similar for generateText and streamObject
-  } catch (error) {
-    // Fallback also fails in Edge runtime
-    try {
-      const dynamicImport = eval('import');
-      dynamicImport('ai').then((mod) => {
-        // This never executes in Edge runtime
-      });
-    } catch (fallbackError) {
-      // Silent failure
-    }
-  }
+Subject: Upgrade @robozavri/ai-sdk-telemetry-collector for Automatic Vercel AI SDK Instrumentation
+Objective:
+
+Your task is to modify the @robozavri/ai-sdk-telemetry-collector TypeScript package to automatically capture and send telemetry data from the Vercel AI SDK. The goal is to eliminate the need for manual data collection in user code. The final solution should be simple, reliable, and thoroughly tested.
+
+Core Requirements:
+
+Automatic Tracking: The package must automatically capture all telemetry from Vercel AI SDK functions like streamText, generateText, streamObject, etc. This includes:
+Prompts: The full input messages/prompt.
+Responses: The complete, final AI-generated response.
+Token Usage: promptTokens, completionTokens, and totalTokens.
+Performance Metrics: Time to first chunk, total generation time (msToFinish).
+Model Information: The model name and provider.
+Finish Reason: e.g., stop, length, tool-calls.
+Tool Calls: If any tools are used, capture the tool call details and the tool outputs.
+Metadata: Any custom metadata passed by the user.
+Reliable & Simple Code:
+The implementation must be robust and handle edge cases gracefully (e.g., API errors, streaming interruptions).
+It should be simple for a developer to enable. Ideally, they initialize the collector, enable it, and it just works.
+The code must be well-structured, following modern TypeScript best practices and be easily testable.
+Technical Implementation Guide:
+
+You should implement a "wrapper" or "patching" mechanism to intercept calls to the Vercel AI SDK.
+
+Option 1: The Wrapper Approach (Preferred)
+
+Create a Wrapper Function: Create a function, let's call it wrapWithTelemetry, that takes a Vercel AI SDK function (e.g., streamText) as input and returns a new, instrumented version of it.
+Instrument the Call: The wrapped function should:
+Record the startTime before calling the original AI SDK function.
+Inject an 
+onFinish
+ callback (or augment an existing one) to capture the results.
+Inside 
+onFinish
+, gather all required data (usage, text, finishReason, etc.).
+Calculate performance metrics (e.g., responseTime = Date.now() - startTime).
+Format the data into the telemetry event schema.
+Use the AITelemetryCollector's internal sender to dispatch the data.
+Crucially, the wrapper must pass all original arguments through and return the original function's output (StreamingTextResponse, Promise, etc.) transparently.
+Example Usage for the End-User:
+import { streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { telemetry } from './telemetry-collector'; // Your package
+
+// The user wraps the AI SDK function once
+const instrumentedStreamText = telemetry.wrap(streamText);
+
+// And uses it normally everywhere else
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const result = await instrumentedStreamText({
+    model: openai('gpt-4o'),
+    messages,
+  });
+  return result.toDataStreamResponse();
 }
 
-Required Fixes
-1. Edge Runtime Detection and Handling
-Add runtime environment detection to handle Edge runtime differently:
+Option 2: The Patching/Monkey-Patching Approach
 
-private isEdgeRuntime(): boolean {
-  return typeof EdgeRuntime !== 'undefined' || 
-         typeof process !== 'undefined' && 
-         process.env.NEXT_RUNTIME === 'edge';
-}
+Identify Target Functions: Identify the core functions in the Vercel AI SDK that need to be patched (e.g., streamText from the ai package).
+Apply the Patch: When the collector is enabled, it should dynamically replace the original AI SDK functions with your wrapped versions. This is more "magical" but can be more brittle if the AI SDK's internal structure changes.
+What to Avoid:
 
-2. Alternative Instrumentation Strategy for Edge Runtime
-For Edge runtime, use a different approach that doesn't rely on dynamic imports:
+Do not rely on experimental_telemetry: This feature is not guaranteed to provide all the necessary data (like the full prompt/response content) and may change. Your solution should be self-contained.
+Do not require manual calls: The entire point of this upgrade is to make tracking automatic. The user should not have to write collector.send(...) in their own code.
+Deliverables:
 
-private instrumentAIForEdgeRuntime() {
-  // Strategy 1: Use global function patching
-  if (typeof globalThis !== 'undefined') {
-    const originalStreamText = globalThis.streamText;
-    if (originalStreamText) {
-      globalThis.streamText = this.wrapStreamText(originalStreamText);
-    }
-  }
-  
-  // Strategy 2: Use module-level instrumentation
-  this.instrumentGlobalAIFunctions();
-}
-
-3. Module-Level Instrumentation
-Create a method that instruments AI SDK functions at the module level:
-
-private instrumentGlobalAIFunctions() {
-  // Check if AI SDK is available in global scope
-  const aiModule = this.getAIModuleFromGlobal();
-  if (aiModule) {
-    this.instrumentModule(aiModule);
-  }
-}
-
-private getAIModuleFromGlobal(): any {
-  // Try multiple ways to access AI SDK in Edge runtime
-  if (typeof globalThis !== 'undefined' && globalThis.ai) {
-    return globalThis.ai;
-  }
-  if (typeof global !== 'undefined' && global.ai) {
-    return global.ai;
-  }
-  // Add more fallback strategies
-  return null;
-}
+Updated Package Code: The modified TypeScript source code for the @robozavri/ai-sdk-telemetry-collector package implementing the automatic instrumentation.
+New Unit/Integration Tests: Add tests using a framework like Vitest or Jest to verify:
+That the wrapper correctly captures all telemetry fields.
+That the original functionality of the wrapped AI SDK function remains unchanged.
+That it works with both streaming and non-streaming functions.
+Updated 
+README.md
+: The documentation must be updated with clear instructions on how to use the new automatic tracking feature. Provide a simple, copy-pasteable example.
+A clean, reliable, and tested implementation that is ready for publishing.
 
 
-4. Enhanced Error Handling and Logging
-Improve error handling to provide better debugging information:
+Many packages track telemetry without needing a wrapper. It is possible to do something like this so that for example the installer only needs 2 lines of code for the configuration.
+example:
+import { AITelemetryCollector } from '@robozavri/ai-sdk-telemetry-collector';
+const collector = new AITelemetryCollector({
+  serverUrl: 'http://localhost:3001/analytics/telemetry',
+  apiKey: process.env.TELEMETRY_API_KEY || 'test-key',
+  debug: true, // Enable debug logging
+})
+collector.enable();
 
-instrumentAI() {
-  this.log('Starting AI SDK instrumentation...');
-  
-  if (this.isEdgeRuntime()) {
-    this.log('Detected Edge runtime, using alternative instrumentation');
-    return this.instrumentAIForEdgeRuntime();
-  }
-  
-  try {
-    this.aiModule = require('ai');
-    this.log('Successfully loaded AI module via require()');
-    this.instrumentModule(this.aiModule);
-  } catch (error) {
-    this.log('require() failed, trying dynamic import:', error.message);
-    this.tryDynamicImport();
-  }
-}
-
-private tryDynamicImport() {
-  // Enhanced dynamic import with better error handling
-  try {
-    const dynamicImport = eval('import');
-    dynamicImport('ai')
-      .then((mod) => {
-        this.log('Dynamic import successful');
-        this.aiModule = mod;
-        this.instrumentModule(mod);
-      })
-      .catch((error) => {
-        this.log('Dynamic import failed:', error.message);
-        this.tryAlternativeStrategies();
-      });
-  } catch (error) {
-    this.log('Dynamic import setup failed:', error.message);
-    this.tryAlternativeStrategies();
-  }
-}
-
-5. Alternative Strategies for Edge Runtime
-Implement multiple fallback strategies:
-
-private tryAlternativeStrategies() {
-  this.log('Trying alternative instrumentation strategies...');
-  
-  // Strategy 1: Check if AI SDK is already loaded
-  if (this.checkForPreloadedAI()) {
-    return;
-  }
-  
-  // Strategy 2: Use function wrapping at call site
-  this.setupCallSiteInstrumentation();
-  
-  // Strategy 3: Use proxy-based instrumentation
-  this.setupProxyInstrumentation();
-}
-
-private checkForPreloadedAI(): boolean {
-  // Check various global scopes for AI SDK
-  const possibleLocations = [
-    globalThis.ai,
-    globalThis.streamText,
-    globalThis.generateText,
-    // Add more locations
-  ];
-  
-  for (const location of possibleLocations) {
-    if (location && typeof location === 'function') {
-      this.log('Found preloaded AI function, instrumenting...');
-      this.instrumentPreloadedFunction(location);
-      return true;
-    }
-  }
-  return false;
-}
-
-6. Edge Runtime Specific Configuration
-Add Edge runtime specific configuration options:
-interface TelemetryConfig {
-  // ... existing config
-  edgeRuntimeStrategy?: 'global' | 'proxy' | 'callsite' | 'auto';
-  enableEdgeRuntimeFallback?: boolean;
-  edgeRuntimeInstrumentation?: {
-    useGlobalPatching?: boolean;
-    useProxyWrapping?: boolean;
-    useCallSiteInstrumentation?: boolean;
-  };
-}
-
-7. Testing and Validation
-Add comprehensive testing for Edge runtime:
-private validateInstrumentation(): boolean {
-  if (this.isEdgeRuntime()) {
-    // Edge runtime specific validation
-    return this.validateEdgeRuntimeInstrumentation();
-  }
-  return this.validateStandardInstrumentation();
-}
-
-private validateEdgeRuntimeInstrumentation(): boolean {
-  // Check if instrumentation worked in Edge runtime
-  const hasStreamText = typeof globalThis.streamText === 'function';
-  const hasGenerateText = typeof globalThis.generateText === 'function';
-  
-  this.log(`Edge runtime validation: streamText=${hasStreamText}, generateText=${hasGenerateText}`);
-  return hasStreamText || hasGenerateText;
-}
-Expected Outcome
-After implementing these fixes:
-AISDKIntegration should work in Edge runtime without dynamic import errors
-Automatic telemetry collection should work without manual sendCustomTelemetry calls
-All AI SDK functions (streamText, generateText, streamObject) should be properly instrumented
-Enhanced error logging should provide clear debugging information
-Fallback strategies should ensure telemetry collection works in various environments
-Testing Requirements
-Test in Next.js Edge runtime environment
-Test in Node.js runtime environment
-Test with different AI SDK versions
-Test with various Next.js configurations
-Verify telemetry data is automatically collected
-Verify no manual sendCustomTelemetry calls are needed
-Backward Compatibility
-Ensure all changes maintain backward compatibility with:
-Existing v1.0.1 API
-Node.js runtime environments
-Standard Next.js configurations
-Manual telemetry collection methods
-This fix will enable true automatic telemetry collection in Edge runtime environments, eliminating the need for manual sendCustomTelemetry calls while maintaining all the enhanced v1.0.1 features.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ const result = await streamText({
+      model: openai('gpt-4o') as any,
+      messages: coreMessages,
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: 'chat-assistant',
+        metadata: {
+          userId: 'test-user',
+          sessionId: sessionId,
+          requestId: requestId,
+        },
+      },
+      onFinish: async (result) => {
+        console.log('📊 Telemetry automatically collected by AISDKIntegration v1.0.2');
+      },
+    });

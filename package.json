@@ -1,7 +1,7 @@
 {
   "name": "@robozavri/ai-sdk-telemetry-collector",
-  "version": "1.0.2",
-  "description": "Telemetry collector for Vercel AI SDK that forwards analytics data to remote servers",
+  "version": "2.0.0",
+  "description": "Automatic telemetry collection for Vercel AI SDK with simple wrapper functionality",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
